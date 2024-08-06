@@ -23,7 +23,7 @@ public class MapGenerator : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetMouseButtonDown(0))
+        if (Input.GetKeyDown(KeyCode.Q))
         {
             GenerateMap();
         }
@@ -62,7 +62,7 @@ public class MapGenerator : MonoBehaviour
         MeshGenerator meshGen = GetComponent<MeshGenerator>();
         meshGen.GenerateMesh(borderedMap, 1);
 
-        // Call the function to assign tags to walls with the map dimensions
+    
         meshGen.AssignTagsToWalls(width, height);
     }
 

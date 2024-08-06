@@ -9,6 +9,8 @@ TagManager:
   - Floor
   - EdgeWall
   - InnerWall
+  - Ground
+  - Projectile
   layers:
   - Default
   - TransparentFX
