@@ -1,114 +1,139 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class PlayerController : MonoBehaviour
 {
+    public static PlayerController Instance { get; private set; }
+
     public float health = 100f;
     public float moveSpeed = 5f;
+    public float backwardSpeed = 2f;
     public float rotationSpeed = 720f;
-    public float jumpForce = 5f;
     public CharacterController controller;
     public Animator animator;
 
     public GameObject projectilePrefab;
     public Transform projectileSpawnPoint;
+    public GameObject laserPrefab;
+    public Image damageImage;
 
-    // Shooting variables
-    public float fireRate = 0.1f; // Time between shots
+    public float fireRate = 1f;
     private float nextFireTime = 0f;
+    private bool isShooting;
 
     private Vector3 moveDirection;
     private Camera mainCamera;
     private bool isRunning;
-    private bool isJumping;
+    private bool isWalkingBackward;
     private bool isIdle;
-    private bool isShooting;
-    private bool isReloading;
+    public bool isDead;
 
-    private Vector3 velocity;
-    public float gravity = -9.81f;
+    private GameObject laserInstance;
+    private Color originalColor;
+    private float fadeSpeed = 5f;
+
+    void Awake()
+    {
+        // Singleton pattern implementation
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
 
     void Start()
     {
         controller = GetComponent<CharacterController>();
         mainCamera = Camera.main;
+        laserInstance = Instantiate(laserPrefab, Vector3.zero, Quaternion.identity);
+        laserInstance.GetComponent<LaserController>().laserOrigin = projectileSpawnPoint;
+
+        if (damageImage != null)
+        {
+            originalColor = damageImage.color;
+            damageImage.color = new Color(originalColor.r, originalColor.g, originalColor.b, 0);
+        }
     }
 
     void Update()
     {
-        Move();
+        if (isDead)
+            return;
+
+        Aim();
         HandleActions();
+        Move();
         UpdateAnimator();
-        ApplyGravity();
+
+        if (damageImage != null)
+        {
+            damageImage.color = Color.Lerp(damageImage.color, new Color(originalColor.r, originalColor.g, originalColor.b, 0), fadeSpeed * Time.deltaTime);
+        }
     }
 
     void Move()
     {
-        float horizontal = 0f;
+        if (isShooting)
+        {
+            isRunning = false;
+            isWalkingBackward = false;
+            isIdle = true;
+            return;
+        }
+
         float vertical = 0f;
 
         if (Input.GetKey(KeyCode.W)) vertical += 1f;
         if (Input.GetKey(KeyCode.S)) vertical -= 1f;
-        if (Input.GetKey(KeyCode.A)) horizontal -= 1f;
-        if (Input.GetKey(KeyCode.D)) horizontal += 1f;
 
-        Vector3 direction = new Vector3(horizontal, 0f, vertical).normalized;
+        float speed = vertical > 0 ? moveSpeed : backwardSpeed;
 
-        if (direction.magnitude >= 0.1f)
+        if (vertical != 0)
         {
-            isRunning = true;
+            isWalkingBackward = vertical < 0;
+            isRunning = vertical > 0;
             isIdle = false;
 
-            // Calculate the direction relative to the camera
-            float targetAngle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg + mainCamera.transform.eulerAngles.y;
-            float angle = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetAngle, ref rotationSpeed, rotationSpeed * Time.deltaTime);
-            transform.rotation = Quaternion.Euler(0f, angle, 0f);
-
-            moveDirection = Quaternion.Euler(0f, targetAngle, 0f) * Vector3.forward;
-            controller.Move(moveDirection * moveSpeed * Time.deltaTime);
+            moveDirection = transform.forward * vertical;
+            controller.Move(moveDirection * speed * Time.deltaTime);
         }
         else
         {
             isRunning = false;
+            isWalkingBackward = false;
             isIdle = true;
         }
     }
 
-    void ApplyGravity()
+    void Aim()
     {
-        if (controller.isGrounded)
-        {
-            velocity.y = -2f; // Ensure player sticks to the ground
-            isJumping = false;
-        }
-        else
-        {
-            velocity.y += gravity * Time.deltaTime;
-        }
+        Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
+        Plane groundPlane = new Plane(Vector3.up, Vector3.zero);
+        float rayLength;
 
-        controller.Move(velocity * Time.deltaTime);
+        if (groundPlane.Raycast(ray, out rayLength))
+        {
+            Vector3 pointToLook = ray.GetPoint(rayLength);
+            Vector3 aimDirection = (pointToLook - transform.position).normalized;
+            aimDirection.y = 0;
+
+            Quaternion lookRotation = Quaternion.LookRotation(aimDirection);
+            transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, Time.deltaTime * rotationSpeed);
+        }
     }
 
     void HandleActions()
     {
-        if (Input.GetKeyDown(KeyCode.Space) && controller.isGrounded)
-        {
-            Jump();
-        }
-        if (Input.GetMouseButtonDown(0))
+        if (Input.GetMouseButton(0))
         {
             Shoot();
         }
-        if (Input.GetKeyDown(KeyCode.R))
-        {
-            Reload();
-        }
-    }
-
-    void Jump()
-    {
-        isJumping = true;
-        isIdle = false;
-        velocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
     }
 
     void Shoot()
@@ -117,19 +142,18 @@ public class PlayerController : MonoBehaviour
         {
             nextFireTime = Time.time + fireRate;
             isShooting = true;
-            isIdle = false;
 
             Instantiate(projectilePrefab, projectileSpawnPoint.position, projectileSpawnPoint.rotation);
 
-            // Additional shooting logic (e.g., play shooting animation/sound)
+            animator.SetBool("IsShooting", true);
+            Invoke("ResetShooting", fireRate);
         }
     }
 
-    void Reload()
+    void ResetShooting()
     {
-        isReloading = true;
-        isIdle = false;
-        // Implement reloading logic here
+        isShooting = false;
+        animator.SetBool("IsShooting", false);
     }
 
     void UpdateAnimator()
@@ -137,14 +161,9 @@ public class PlayerController : MonoBehaviour
         if (animator != null)
         {
             animator.SetBool("IsRunning", isRunning);
-            animator.SetBool("IsJumping", isJumping);
+            animator.SetBool("IsWalkingBackward", isWalkingBackward);
             animator.SetBool("IsIdle", isIdle);
             animator.SetBool("IsShooting", isShooting);
-            animator.SetBool("IsReloading", isReloading);
-
-            // Reset shooting and reloading after setting animator
-            isShooting = false;
-            isReloading = false;
         }
     }
 
@@ -155,11 +174,27 @@ public class PlayerController : MonoBehaviour
         {
             Die();
         }
+
+        if (damageImage != null)
+        {
+            damageImage.color = originalColor;
+        }
     }
 
     void Die()
     {
-        Destroy(gameObject);
+        isDead = true;
+        Debug.Log("Player has died. Attempting to show Game Over screen.");
+
+        GameOverManager gameOverManager = FindObjectOfType<GameOverManager>();
+        if (gameOverManager != null)
+        {
+            gameOverManager.ShowGameOver();
+        }
+        else
+        {
+            Debug.LogError("GameOverManager not found in the scene!");
+        }
     }
 
     public Vector3 GetMoveDirection()
@@ -169,10 +204,6 @@ public class PlayerController : MonoBehaviour
 
     private void OnControllerColliderHit(ControllerColliderHit hit)
     {
-        // Reset jump state when hitting the ground
-        if (hit.collider.CompareTag("Ground"))
-        {
-            isJumping = false;
-        }
+        // Handle any collisions here if necessary
     }
 }

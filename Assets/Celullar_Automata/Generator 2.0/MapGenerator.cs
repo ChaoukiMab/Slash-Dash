@@ -1,7 +1,9 @@
-using UnityEngine;
-using System.Collections;
-using System.Collections.Generic;
 using System;
+using System.Collections; // For IEnumerator, List, etc.
+using System.Collections.Generic; // For List, Dictionary, etc.
+using UnityEngine; // For Unity-specific classes like MonoBehaviour, GameObject, etc.
+using UnityEngine.UI; // For UI components like Slider, Canvas, etc.
+using UnityEngine.AI; // For NavMeshAgent and related classes
 
 public class MapGenerator : MonoBehaviour
 {
@@ -14,10 +16,23 @@ public class MapGenerator : MonoBehaviour
     [Range(0, 100)]
     public int randomFillPercent;
 
+    public GameObject turtleSpawnPointPrefab;
+    public GameObject mageSpawnPointPrefab;
+    public GameObject playerPrefab;
+    public int numTurtleSpawnPoints = 3;
+    public int numMageSpawnPoints = 2;
+
     int[,] map;
+    List<Vector3> openSpaces;
+    private NavMeshSurface navMeshSurface; // NavMeshSurface component
+
 
     void Start()
     {
+        // Add NavMeshSurface component if not already present
+        navMeshSurface = gameObject.AddComponent<NavMeshSurface>();
+        navMeshSurface.collectObjects = CollectObjects.All;
+
         GenerateMap();
     }
 
@@ -32,6 +47,8 @@ public class MapGenerator : MonoBehaviour
     void GenerateMap()
     {
         map = new int[width, height];
+        openSpaces = new List<Vector3>();
+
         RandomFillMap();
 
         for (int i = 0; i < 5; i++)
@@ -51,6 +68,10 @@ public class MapGenerator : MonoBehaviour
                 if (x >= borderSize && x < width + borderSize && y >= borderSize && y < height + borderSize)
                 {
                     borderedMap[x, y] = map[x - borderSize, y - borderSize];
+                    if (map[x - borderSize, y - borderSize] == 0)
+                    {
+                        openSpaces.Add(CoordToWorldPoint(new Coord(x - borderSize, y - borderSize)));
+                    }
                 }
                 else
                 {
@@ -62,8 +83,11 @@ public class MapGenerator : MonoBehaviour
         MeshGenerator meshGen = GetComponent<MeshGenerator>();
         meshGen.GenerateMesh(borderedMap, 1);
 
-    
-        meshGen.AssignTagsToWalls(width, height);
+        // Bake the NavMesh after generating the mesh
+        navMeshSurface.BuildNavMesh();
+
+        PlacePlayer(); // Ensure player is placed
+        PlaceSpawnPoints();
     }
 
     void ProcessMap()
@@ -198,7 +222,6 @@ public class MapGenerator : MonoBehaviour
     void CreatePassage(Room roomA, Room roomB, Coord tileA, Coord tileB)
     {
         Room.ConnectRooms(roomA, roomB);
-        //Debug.DrawLine (CoordToWorldPoint (tileA), CoordToWorldPoint (tileB), Color.green, 100);
 
         List<Coord> line = GetLine(tileA, tileB);
         foreach (Coord c in line)
@@ -287,7 +310,7 @@ public class MapGenerator : MonoBehaviour
 
     Vector3 CoordToWorldPoint(Coord tile)
     {
-        return new Vector3(-width / 2 + .5f + tile.tileX, 2, -height / 2 + .5f + tile.tileY);
+        return new Vector3(-width / 2 + .5f + tile.tileX, 0.1f, -height / 2 + .5f + tile.tileY);
     }
 
     List<List<Coord>> GetRegions(int tileType)
@@ -390,7 +413,6 @@ public class MapGenerator : MonoBehaviour
                     map[x, y] = 1;
                 else if (neighbourWallTiles < 4)
                     map[x, y] = 0;
-
             }
         }
     }
@@ -417,6 +439,79 @@ public class MapGenerator : MonoBehaviour
         }
 
         return wallCount;
+    }
+
+    void PlaceSpawnPoints()
+    {
+        for (int i = 0; i < numTurtleSpawnPoints; i++)
+        {
+            Vector3 spawnPosition = GetRandomOpenSpace();
+            Instantiate(turtleSpawnPointPrefab, spawnPosition, Quaternion.identity);
+        }
+
+        for (int i = 0; i < numMageSpawnPoints; i++)
+        {
+            Vector3 spawnPosition = GetRandomOpenSpace();
+            Instantiate(mageSpawnPointPrefab, spawnPosition, Quaternion.identity);
+        }
+    }
+
+    void PlacePlayer()
+    {
+        Vector3 playerSpawnPosition = GetPlayerSpawnPosition();
+        GameObject player = Instantiate(playerPrefab, playerSpawnPosition, Quaternion.identity);
+
+        CameraSettings cameraSettings = Camera.main.GetComponent<CameraSettings>();
+        if (cameraSettings != null)
+        {
+            cameraSettings.SetTarget(player.transform);
+        }
+    }
+
+    Vector3 GetPlayerSpawnPosition()
+    {
+        int attempts = 10;
+        Vector3 centerPosition = CoordToWorldPoint(new Coord(width / 2, height / 2));
+
+        for (int i = 0; i < attempts; i++)
+        {
+            if (IsPositionValidForSpawn(centerPosition))
+            {
+                return centerPosition;
+            }
+            centerPosition += new Vector3(UnityEngine.Random.Range(-5, 5), 0, UnityEngine.Random.Range(-5, 5));
+        }
+
+        return GetRandomOpenSpace();
+    }
+
+    Vector3 GetRandomOpenSpace()
+    {
+        int attempts = 10;
+        for (int i = 0; i < attempts; i++)
+        {
+            int index = UnityEngine.Random.Range(0, openSpaces.Count);
+            Vector3 position = openSpaces[index];
+            if (IsPositionValidForSpawn(position))
+            {
+                return position;
+            }
+        }
+
+        return CoordToWorldPoint(new Coord(width / 2, height / 2));
+    }
+
+    bool IsPositionValidForSpawn(Vector3 position)
+    {
+        RaycastHit hit;
+        if (Physics.Raycast(position + Vector3.up * 50, Vector3.down, out hit))
+        {
+            if (hit.collider.CompareTag("Wall"))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     struct Coord

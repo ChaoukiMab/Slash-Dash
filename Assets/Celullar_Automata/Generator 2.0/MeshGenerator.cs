@@ -63,17 +63,10 @@ public class MeshGenerator : MonoBehaviour
             CreateWallMesh(squareSize);
             CreateFloorMesh(map, squareSize); // Call the new method to generate the floor
         }
-
-        // Call the method with the map width and height
-        AssignTagsToWalls(map.GetLength(0), map.GetLength(1));
     }
 
     void CreateWallMesh(float squareSize)
     {
-        MeshCollider currentCollider = GetComponent<MeshCollider>();
-        if (currentCollider != null)
-            Destroy(currentCollider);
-
         CalculateMeshOutlines();
 
         List<Vector3> wallVertices = new List<Vector3>();
@@ -81,98 +74,72 @@ public class MeshGenerator : MonoBehaviour
         List<Vector2> wallUVs = new List<Vector2>();
 
         Mesh wallMesh = new Mesh();
-        float wallHeight = 7;
-        float wallThickness = 0.001f; // Adjust as needed
+        float wallHeight = 10;
 
         foreach (List<int> outline in outlines)
         {
             for (int i = 0; i < outline.Count - 1; i++)
             {
-                // Vertices for the current wall segment
                 Vector3 start = vertices[outline[i]];
                 Vector3 end = vertices[outline[i + 1]];
 
-                // Calculate wall direction and normal
-                Vector3 wallDir = (end - start).normalized;
-                Vector3 wallNormal = Vector3.Cross(wallDir, Vector3.up);
-
-                // Calculate wall tangents
-                Vector3 wallTangent = Vector3.Cross(Vector3.up, wallNormal).normalized;
-
-                // Calculate vertices for the wall segment
-                Vector3 topLeft = start + Vector3.up * wallHeight;
-                Vector3 topRight = end + Vector3.up * wallHeight;
                 Vector3 bottomLeft = start;
                 Vector3 bottomRight = end;
+                Vector3 topLeft = bottomLeft + Vector3.up * wallHeight;
+                Vector3 topRight = bottomRight + Vector3.up * wallHeight;
 
-                // Extrude vertices for thickness
-                topLeft += wallNormal * wallThickness;
-                topRight += wallNormal * wallThickness;
-                bottomLeft += wallNormal * wallThickness;
-                bottomRight += wallNormal * wallThickness;
-
-                // Add vertices to the list
-                wallVertices.Add(topLeft);
-                wallVertices.Add(topRight);
+                // Front face
                 wallVertices.Add(bottomLeft);
                 wallVertices.Add(bottomRight);
+                wallVertices.Add(topRight);
+                wallVertices.Add(topLeft);
 
-                // Add UVs for texturing
-                wallUVs.Add(new Vector2(0, wallHeight));
-                wallUVs.Add(new Vector2(Vector3.Distance(start, end) / squareSize, wallHeight));
+                // Back face
+                wallVertices.Add(bottomRight);
+                wallVertices.Add(bottomLeft);
+                wallVertices.Add(topLeft);
+                wallVertices.Add(topRight);
+
+                // UVs
                 wallUVs.Add(new Vector2(0, 0));
                 wallUVs.Add(new Vector2(Vector3.Distance(start, end) / squareSize, 0));
+                wallUVs.Add(new Vector2(Vector3.Distance(start, end) / squareSize, wallHeight));
+                wallUVs.Add(new Vector2(0, wallHeight));
 
-                // Add triangles
-                int startIndex = wallVertices.Count - 4;
-                wallTriangles.Add(startIndex + 0);
-                wallTriangles.Add(startIndex + 2);
-                wallTriangles.Add(startIndex + 3);
-                wallTriangles.Add(startIndex + 3);
-                wallTriangles.Add(startIndex + 1);
-                wallTriangles.Add(startIndex + 0);
+                wallUVs.Add(new Vector2(0, 0));
+                wallUVs.Add(new Vector2(Vector3.Distance(start, end) / squareSize, 0));
+                wallUVs.Add(new Vector2(Vector3.Distance(start, end) / squareSize, wallHeight));
+                wallUVs.Add(new Vector2(0, wallHeight));
+
+                int baseIndex = wallVertices.Count - 8;
+
+                // Front face triangles
+                wallTriangles.Add(baseIndex + 0);
+                wallTriangles.Add(baseIndex + 1);
+                wallTriangles.Add(baseIndex + 2);
+                wallTriangles.Add(baseIndex + 2);
+                wallTriangles.Add(baseIndex + 3);
+                wallTriangles.Add(baseIndex + 0);
+
+                // Back face triangles
+                wallTriangles.Add(baseIndex + 4);
+                wallTriangles.Add(baseIndex + 5);
+                wallTriangles.Add(baseIndex + 6);
+                wallTriangles.Add(baseIndex + 6);
+                wallTriangles.Add(baseIndex + 7);
+                wallTriangles.Add(baseIndex + 4);
             }
         }
 
-        // Create the mesh
         wallMesh.vertices = wallVertices.ToArray();
         wallMesh.triangles = wallTriangles.ToArray();
         wallMesh.uv = wallUVs.ToArray();
         wallMesh.RecalculateNormals();
 
-        // Assign the mesh to the walls object
         walls.mesh = wallMesh;
 
-        // Add mesh collider
         MeshCollider wallCollider = gameObject.AddComponent<MeshCollider>();
         wallCollider.sharedMesh = wallMesh;
-    }
-
-    public void AssignTagsToWalls(int mapWidth, int mapHeight)
-    {
-        // Your logic to assign tags
-        foreach (Transform child in transform)
-        {
-            if (child.CompareTag("Wall"))
-            {
-                if (IsEdgeWall(child.position, mapWidth, mapHeight))
-                {
-                    child.tag = "EdgeWall";
-                }
-                else
-                {
-                    child.tag = "InnerWall";
-                }
-            }
-        }
-    }
-
-    bool IsEdgeWall(Vector3 position, int width, int height)
-    {
-        // logic to determine if a wall is an edge wall or inner wall
-        // assume walls close to the edges of the map are edge walls
-        float edgeThreshold = 5f; // Adjust based on your map size
-        return position.x < edgeThreshold || position.x > width - edgeThreshold || position.z < edgeThreshold || position.z > height - edgeThreshold;
     }
 
     void CreateFloorMesh(int[,] map, float squareSize)
@@ -183,24 +150,20 @@ public class MeshGenerator : MonoBehaviour
         List<Vector3> floorVertices = new List<Vector3>();
         List<int> floorTriangles = new List<int>();
 
-        // Calculate the size of the floor mesh based on the map dimensions and square size
         Vector2 floorSize = new Vector2(map.GetLength(0) * squareSize, map.GetLength(1) * squareSize);
-        Vector3 floorCenter = new Vector3(floorSize.x / 2, 0, floorSize.y / 2); // Center of the floor mesh
+        Vector3 floorCenter = new Vector3(floorSize.x / 2, 0, floorSize.y / 2);
 
-        // Add vertices for the entire floor
-        floorVertices.Add(new Vector3(0, 0, 0) - floorCenter); // Bottom left
-        floorVertices.Add(new Vector3(floorSize.x, 0, 0) - floorCenter); // Bottom right
-        floorVertices.Add(new Vector3(0, 0, floorSize.y) - floorCenter); // Top left
-        floorVertices.Add(new Vector3(floorSize.x, 0, floorSize.y) - floorCenter); // Top right
+        floorVertices.Add(new Vector3(0, 0, 0) - floorCenter);
+        floorVertices.Add(new Vector3(floorSize.x, 0, 0) - floorCenter);
+        floorVertices.Add(new Vector3(0, 0, floorSize.y) - floorCenter);
+        floorVertices.Add(new Vector3(floorSize.x, 0, floorSize.y) - floorCenter);
 
-        // Add thickness to the floor (adjust as needed)
         float floorThickness = 0.1f;
         for (int i = 0; i < floorVertices.Count; i++)
         {
             floorVertices[i] += Vector3.down * floorThickness;
         }
 
-        // Add triangles for the entire floor
         floorTriangles.Add(0);
         floorTriangles.Add(2);
         floorTriangles.Add(3);
@@ -208,57 +171,12 @@ public class MeshGenerator : MonoBehaviour
         floorTriangles.Add(1);
         floorTriangles.Add(0);
 
-        // Loop through the map to determine which parts of the floor should be removed
-        for (int x = 0; x < map.GetLength(0) - 1; x++)
-        {
-            for (int y = 0; y < map.GetLength(1) - 1; y++)
-            {
-                // Check if the area is occupied by walls
-                if (!IsAvailableArea(x, y, map))
-                {
-                    // Calculate the position of the wall
-                    Vector3 wallPosition = new Vector3(-map.GetLength(0) / 2 + x * squareSize, 0, -map.GetLength(1) / 2 + y * squareSize);
-
-                    // Calculate the vertices of the floor to be removed around the wall
-                    Vector3 bottomLeft = wallPosition;
-                    Vector3 bottomRight = wallPosition + new Vector3(squareSize, 0, 0);
-                    Vector3 topLeft = wallPosition + new Vector3(0, 0, squareSize);
-                    Vector3 topRight = wallPosition + new Vector3(squareSize, 0, squareSize);
-
-                    // Remove the floor vertices and triangles around the wall
-                    floorVertices.Remove(bottomLeft - floorCenter);
-                    floorVertices.Remove(bottomRight - floorCenter);
-                    floorVertices.Remove(topLeft - floorCenter);
-                    floorVertices.Remove(topRight - floorCenter);
-
-                    // Remove the floor triangles around the wall
-                    floorTriangles.RemoveAll(t => t == floorVertices.Count); // Remove triangle 0
-                    floorTriangles.RemoveAll(t => t == floorVertices.Count); // Remove triangle 1
-                    floorTriangles.RemoveAll(t => t == floorVertices.Count); // Remove triangle 2
-                    floorTriangles.RemoveAll(t => t == floorVertices.Count); // Remove triangle 3
-                    floorTriangles.RemoveAll(t => t == floorVertices.Count); // Remove triangle 4
-                    floorTriangles.RemoveAll(t => t == floorVertices.Count); // Remove triangle 5
-                }
-            }
-        }
-
         floorMesh.vertices = floorVertices.ToArray();
         floorMesh.triangles = floorTriangles.ToArray();
         floorMesh.RecalculateNormals();
-    }
 
-    bool IsAvailableArea(int x, int y, int[,] map)
-    {
-        // Check if the coordinates are within the bounds of the map
-        if (x >= 0 && x < map.GetLength(0) - 1 && y >= 0 && y < map.GetLength(1) - 1)
-        {
-            // Check if the area is not occupied by walls (assuming 0 represents empty space and 1 represents a wall)
-            if (map[x, y] == 0 && map[x + 1, y] == 0 && map[x, y + 1] == 0 && map[x + 1, y + 1] == 0)
-            {
-                return true;
-            }
-        }
-        return false;
+        MeshCollider floorCollider = gameObject.AddComponent<MeshCollider>();
+        floorCollider.sharedMesh = floorMesh;
     }
 
     void Generate2DColliders()
@@ -291,8 +209,6 @@ public class MeshGenerator : MonoBehaviour
         {
             case 0:
                 break;
-
-            // 1 points:
             case 1:
                 MeshFromPoints(square.centreBottom, square.bottomLeft, square.centreLeft);
                 break;
@@ -305,8 +221,6 @@ public class MeshGenerator : MonoBehaviour
             case 8:
                 MeshFromPoints(square.topLeft, square.centreTop, square.centreLeft);
                 break;
-
-            // 2 points:
             case 3:
                 MeshFromPoints(square.centreRight, square.bottomRight, square.bottomLeft, square.centreLeft);
                 break;
@@ -325,8 +239,6 @@ public class MeshGenerator : MonoBehaviour
             case 10:
                 MeshFromPoints(square.topLeft, square.centreTop, square.centreRight, square.bottomRight, square.centreBottom, square.centreLeft);
                 break;
-
-            // 3 point:
             case 7:
                 MeshFromPoints(square.centreTop, square.topRight, square.bottomRight, square.bottomLeft, square.centreLeft);
                 break;
@@ -339,8 +251,6 @@ public class MeshGenerator : MonoBehaviour
             case 14:
                 MeshFromPoints(square.topLeft, square.topRight, square.bottomRight, square.centreBottom, square.centreLeft);
                 break;
-
-            // 4 point:
             case 15:
                 MeshFromPoints(square.topLeft, square.topRight, square.bottomRight, square.bottomLeft);
                 checkedVertices.Add(square.topLeft.vertexIndex);
@@ -405,7 +315,6 @@ public class MeshGenerator : MonoBehaviour
 
     void CalculateMeshOutlines()
     {
-
         for (int vertexIndex = 0; vertexIndex < vertices.Count; vertexIndex++)
         {
             if (!checkedVertices.Contains(vertexIndex))

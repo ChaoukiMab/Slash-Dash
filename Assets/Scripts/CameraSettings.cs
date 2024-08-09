@@ -9,8 +9,23 @@ public class CameraSettings : MonoBehaviour
 
     private Vector3 velocity = Vector3.zero;
 
+    void Start()
+    {
+        // Try to find the player if target is not set
+        if (target == null)
+        {
+            GameObject player = GameObject.FindGameObjectWithTag("Player");
+            if (player != null)
+            {
+                target = player.transform;
+            }
+        }
+    }
+
     void LateUpdate()
     {
+        if (target == null) return;
+
         Vector3 lookAheadOffset = Vector3.zero;
         if (target.GetComponent<PlayerController>() != null)
         {
@@ -27,5 +42,10 @@ public class CameraSettings : MonoBehaviour
 
         // Always look at the target
         transform.LookAt(target.position + Vector3.up * 1.5f); // Adjust the look at position as needed
+    }
+
+    public void SetTarget(Transform newTarget)
+    {
+        target = newTarget;
     }
 }

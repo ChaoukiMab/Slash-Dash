@@ -11,6 +11,9 @@ TagManager:
   - InnerWall
   - Ground
   - Projectile
+  - Enemy
+  - TurtleSpawnPoint
+  - MageSpawnPoint
   layers:
   - Default
   - TransparentFX
@@ -21,8 +24,8 @@ TagManager:
   - Floor
   - InnerEmptySpace
   - Player
-  - 
-  - 
+  - DamageUI
+  - Enemy
   - 
   - 
   - 
